@@ -1,0 +1,350 @@
+\Sexpr{set_parent('../MainThesis.Rnw')}
+
+<<LoadData>>=
+load("../Data/WishartH.Rdata")
+load("../Data/meanH.Rdata")
+load("../Data/Case1Mean.Rdata")
+load("../Data/Case2Mean.Rdata")
+load("../Data/Case1Sigma.Rdata")
+load("../Data/Case2Sigma.Rdata")
+load("../Data/ICdata.Rdata")
+load("../Data/CPDsims.Rdata")
+M <- nrow(TransformedData)
+p <- ncol(TransformedData)
+alpha <- 0.01
+
+QuantileHot <- p*(M-1)*(M+1)/((M-p)*M) * qf(1-alpha, p, M-p)
+
+K <- 100
+OrgOrder <- colnames(TransformedData)
+# divide by a constant!
+TransformedData[,1:ncol(TransformedData) %in% grep("mean",OrgOrder)] <- TransformedData[,1:ncol(TransformedData) %in% grep("mean",OrgOrder)]/K
+
+mu0 <- colMeans(TransformedData)
+Sigma0 <- var(TransformedData)*(M-1)/M
+
+Rcpp::sourceCpp("../FunctionsAndRcpp/RcppHotellingT2.cpp")
+###################### Found online function! webpage: http://www.sthda.com/english/wiki/ggplot2-easy-way-to-mix-multiple-graphs-on-the-same-page-r-software-and-data-visualization
+get_legend <-function(myggplot){
+  tmp <- ggplot_gtable(ggplot_build(myggplot))
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
+  legend <- tmp$grobs[[leg]]
+  return(legend)
+}
+#######################
+@
+\section{Calculation of control limits}
+The number of variables is equal to $p=\Sexpr{p}$ and the number of observation in the IC sample is equal to $M=\Sexpr{M}$. Using $\alpha=0.01$, the control limit of Hotelling's $T^2$ is equal to $\Sexpr{round(QuantileHot,2)}$. 
+
+To calculate the control limits for the MCUSUM scheme we use the function \texttt{CalculateControlLimit}, described in section \ref{AVERG}. In this thesis we will use a set of allowance constants $k$ to see how the different control charts act with the use of different allowance constants. The following inputs was used in the calculations of the control limits.
+\begin{itemize}
+\item Allowance constants $k = \{0.30, 0.40, 0.50\}.$
+\item Target in-control average run length ARL$^*_0 = 100$.
+\item Maximum number of iterations Nmax= 40 or 20.
+\item The number $\epsilon$ was set to $0.05$.
+\item The number of simulations was set to $10^5$ 
+\end{itemize}
+The in-control parameters $\boldsymbol{\mu}_0$ and $\boldsymbol{\Sigma}_0}$ were estimated from the transformed data. The constant $a_0$ was set sufficiently small in each simulation to ensure convergence, often close or equal to zero. The upper limit $b_0$ was tailored for each allowance constant, $k$. For $k=0.3$, $b_0$ was chosen large, equal to $1000$ or $10 000$ since no prior information on the control limit is available. In the next calculation with a larger allowance constant $k$, $b_0$ was chosen close to the calculated control limit in previous step with a smaller allowance constant. In Table \ref{Control} the control limits are listed for the mean and covairance chart with the use of different allowance constants. 
+<<ControlLimitAndTable, results='asis'>>=
+k <- c(0.3,0.4,0.5)
+library(dplyr)
+library(grid)
+# Extract control limits for mean and covariance
+Control.Limits.mean <- lapply(H_Listmean, function(x) x$Intervals %>%
+  na.omit() %>%
+  tail(1) %>%
+  mean()) %>%
+  unlist() %>%
+  round(3)
+
+Control.Limits.Cov <- lapply(H_ListSigma, function(x) x$Intervals %>%
+  na.omit() %>%
+  tail(1) %>%
+  mean()) %>%
+  unlist() %>%
+  round(3)
+
+tmp.xtab <- rbind(c("Mean",Control.Limits.mean), c("Covariance",Control.Limits.Cov)) %>%
+  as.data.frame()
+colnames(tmp.xtab) <- c("Type",k)
+
+library(xtable)
+#tmp.xtab.print <- xtable(tmp.xtab, digits = 2, caption="The control limits calculated using the function CalculateControlLimit for a set of allowance constants k.", label="Control")
+#print.xtable(tmp.xtab.print,include.rownames=FALSE)
+
+# The table have been slightly modified in appearance but NOT the content.
+@
+% latex table generated in R 3.2.3 by xtable 1.8-2 package
+% Mon Jun 13 16:22:24 2016
+\begin{table}[ht]
+\centering
+\caption{The control limits calculated using the function \texttt{CalculateControlLimit} for a set of allowance constants k.\label{Control}} 
+\begin{tabular}{lccc}
+\toprule
+& \multicolumn{3}{c}{$k$} \\ \cmidrule(r){2-4} 
+Type & 0.3 & 0.4 & 0.5 \\ 
+\midrule
+Mean & 2580.242 & 2100.029 & 1713.218 \\ 
+\midrule
+Covariance & 382.812 & 226.562 & 116.547 \\
+\bottomrule
+\end{tabular}
+\end{table}
+\section{Performance measures and simulation study}
+We will consider two different out-of-control scenarios. The first scenario will emulate a broken lane, all measurements on this lane will persistently show worse behaviour. The second case considers odd behaviour in the error rate of lane 1, while every other variable is performing as expected. We assume that these scenarios can manifest itself in the mean and the covariance matrix but we will not consider them at the same time. Next we present the performance measures we are going to use. 
+
+\subsection{Perfromance measures}
+To evaluate the performance of the charts, two measures will be used. The ARL$_1$, which is described as the time it takes until we discover the change which is present. It is defined in the same manner as the ARL$_0$, i.e.
+\begin{align}
+&N^*=\inf \{t \in \mathbb{Z}_+: H_t>h \}& \\\nonumber
+&\text{E}[N^*] = \text{E}[\inf \{t \in \mathbb{Z}_+: H_t>h \}].& 
+\end{align}
+Note that we have removed the subscript $h$ and added a star to distinguish between the ARL$_0$ and ARL$_1$. The ARL$_1$ assumes that the machine breaks as soon as we start to monitor the process. For Hotellings $T^2$ we will set a max ARL$_1$ to 500. If Hotellings $T^2$ control chart does not indicate a change after the observations in the out-of-control scenarios we will say that it failed to detect the change.
+
+Now, to assume that the machine breaks as soon as Phase 2 monitoring begins may not be a very realistic case. The conditional expected delay (cf. \cite{ED}) can be used to emulate more realistic cases where changes occur after some time. The conditional expected delay is defined as 
+$$
+\text{ED}_{\tau}(N^*) = \text{E}_{\tau}[N^*-\tau+1|N^*\geq \tau]
+$$
+which allows for shifts at arbitrary times $\tau$. In our simulations we will set $\tau=20$. These expectations will be approximated using monte carlo approximation with $10^5$ simulations.
+
+The performance of the change point estimation model will be evaluated using following performance measure
+$$
+\bar{D}=\frac{1}{n}\sum_{i=1}^n \text{D}_i=\frac{1}{n}\sum_{i=1}^n \left(\hat{\tau}_i-\tau \right)
+$$
+which will give a indication how how our estimated change point compares to the true value, on average. Since the change point detection model assumed a fixed sample size we will perform the simulations in the following way: 
+\begin{itemize}
+\item Simulate $\tau=20$ observations according to our in control parameters.
+\item Simulate $\lfloor \text{ED}_{\tau}[N^*] \rfloor$ number of observations for the given scenario, size of change and allowance constant. 
+\end{itemize}
+Here $\lfloor \cdot \rfloor$ is the floor, i.e. we take the closest lowest integer of the conditional expected delay as the number of simulations for a given scenario and size of change. In the simulation of $\bar{D}$ we will use the result of $k=0.3$. 
+We will continue with defining these scenarios and how we are going to simulate the performance measures.
+\subsection{Simulation study}
+Let the observed process $\mathbf{X}_t$ be ordered in the following manner. The first three variables are the mean q, percent q30 and error rate variables from the first lane and read. The second triplet of variables are from the first lane but the second read and so forth. Define the out-of-control mean vector $\boldsymbol{\mu}_1$ and out-of-control covariance matrix $\boldsymbol{\Sigma}_1$ in the following way
+\begin{align}
+&\boldsymbol{\mu}_1=\boldsymbol{\mu}_0 +\begin{pmatrix} -\delta_1 \\ -\delta_2 \\ \delta_3 \\ -\delta_1 \\ -\delta_2 \\ \delta_3 \\ 0 \\ \vdots \\ 0 \end{pmatrix} & \;\;\;\;\;\;\; & \boldsymbol{\Sigma}_1 = \boldsymbol{\Sigma}_0+\boldsymbol{\Delta} &
+\end{align}
+where 
+$$
+\boldsymbol{\Delta}=
+\begin{pmatrix} 
+\boldsymbol{\Delta}_{1} &\mathbf{0}_{(p-6)\times(p-6)}  \\
+\mathbf{0}_{(p-6)\times(p-6)} & \mathbf{0}_{(p-6)\times(p-6)}
+\end{pmatrix} &
+$$
+where $\mathbf{0}_{k\times k}$ is a $k\times k$ matrix with all entries equal to zero. The submatrix $\boldsymbol{\Delta}_{1}$ have dimension $6 \times 6$.   
+We will continue with simulating scenario 1 where we assume that quality control data indicates increasingly bad performance in lane 1. 
+\subsubsection{Scenario 1 - All quality control variables in lane 1 show increasingly poor behaviour}
+<<HotellingsScenario1>>=
+
+ChangeMeanFun<- function(mu0,x) { 
+  mu0 + c(rep(c(-x,-x,x),2),rep(0,length(mu0)-6))
+}
+# 
+HotellingChange<- function(i){
+  data <- MASS::mvrnorm(n=500, mu=ChangeMeanFun(mu0 = mu0, x=i), Sigma=Sigma0)
+  Hotellings <- apply(data,1, function(j) HotellingT2(x_new=j, mu0=mu0, Sigma0=Sigma0))
+  FirstAbove <- which(Hotellings>QuantileHot) %>% first()
+  
+  
+  if (is.na(FirstAbove)==TRUE)
+  # did none detect the change? if yes, set to 500.
+  {
+    FirstAbove <- 500
+  }
+  return(FirstAbove)
+}
+# Perform simulations for a limited set of the simulations values in the change vecotr.
+exChange<- changeVector.case1[c(10,20,30,40,50)] 
+# Hot_list1 <- c()
+# for (i in exChange){
+#   mcuh <- replicate(1e5, HotellingChange(i=i))
+#   Hot_list1 <- c(Hot_list1, mean(mcuh))
+# }
+# save(Hot_list1, file="../Data/Scenario1Hotelling.Rdata")
+load("../Data/Scenario1Hotelling.Rdata")
+@
+
+In this scenario the quality control data shows persistently worse behaviour. We assume that $\delta_i=\delta>0$ for $i=1,2,3$. We also assume this change manifests in the variance. Therefore, all off-diagonal elemets in $\boldsymbol{\Delta}_1$ are zero and the diagonal elements are equal to a constant $\Delta>0$. These changes will be considered in separate simulation studies. 
+
+In Figure \ref{fig:ARL1MeanCase1} we can see the ARL$_1$ and ED of the MCUSUM for different changes in the mean, for different sizes of $\delta$. Note that the values of $\delta$ are small, this is a result of the scale of the transformed data. The ARL$_1$ goes down quickly for increasing values of $\delta$. The conditional expected delay (ED) is seen to decrease quicker than the ARL$_1$. The value of the allowance constant $k$ does not seem to impact the ARL$_1$ or the ED in scenario 1 for persistent changes in the mean. Hotelling's $T^2$ statistic showed no indication of a change, the smallest out-of-control ARL for all $\delta$ was equal to $\Sexpr{min(Hot_list1)}$ for this simulated scenario.
+<<ARL1MeanCase1, fig.cap="Out-of-control ARL and ED for the MCUSUM chart of Scenario 1 - changes in the mean of all variables of lane one.", fig.height=4>>=
+library(ggplot2)
+library(gridExtra)
+ggplot.tmp <- do.call("cbind",ARL1.case1) %>% as.data.frame()
+ggplot.tmp$x <- changeVector.case1
+colnames(ggplot.tmp) <- c(paste0("k",c(0.3,0.4,0.5)), "x")
+p1 <- ggplot(ggplot.tmp)+
+  geom_line(aes(y=k0.3,x=x, linetype="solid")) +
+  geom_line(aes(y=k0.4,x=x, linetype="dashed")) +
+  geom_line(aes(y=k0.5,x=x, linetype="dotdash")) +
+  ylab(expression(ARL[1])) +
+  xlab(expression(delta)) +
+  scale_linetype("Allowance \n constant, k", labels=paste0("0.",3:5)) +
+  theme_bw() +
+  theme(legend.position="right") 
+  
+
+ggplot.tmp <- do.call("cbind",ED.case1) %>% as.data.frame()
+ggplot.tmp$x <- changeVector.case1
+colnames(ggplot.tmp) <- c(paste0("k",c(0.3,0.4,0.5)), "x")
+
+p2 <- ggplot(ggplot.tmp) +
+  geom_line(aes(y=k0.3,x=x), linetype=1) +
+  geom_line(aes(y=k0.4,x=x), linetype=2) +
+  geom_line(aes(y=k0.5,x=x), linetype=3) +
+  theme_bw() +
+  ylab("ED") +
+  xlab(expression(delta)) +
+  theme(legend.position="none") 
+p3 <- get_legend(p1)
+p1 <- p1 + theme(legend.position="none")
+
+grid.arrange(p1,p2,p3, ncol=3, widths=c(2.3, 2.3, 0.8))
+@
+
+<<StartConstructingXtbles>>=
+ARL1sigma <- do.call("rbind",ARL1Sigma.case1)
+colnames(ARL1sigma) <-  changeVectorSigma.case1
+
+EDsigma <- do.call("rbind", EDSigma.case1)
+colnames(EDsigma) <-  changeVectorSigma.case1
+EDsigma<- round(EDsigma,2)
+#xtable(ARL1sigma)
+#xtable(EDsigma)
+# xtable code above generates the tables and was then pasted/manipulated into the printed format in the thesis. 
+@
+In Table \ref{LongTable1} we have the simulated ARL$_1$ and ED for persistent changes in the covariance matrix. For small changes in the variance of the covariance matrix it takes a long time, on average, to discover the change. As $\Delta$ grows the MCUSUM chart for the covariance matrix detects changes faster. For this specific scenario and shifts the allowance constant $k$ seem to be optimal at $0.5$. The ARL$_1$ and ED is smaller for a allowance constant equal to $0.5$ compared to a allowance constant equal to $0.3$ or $0.4$.
+\begin{table}[ht]
+\centering
+\caption{Scenario 1. MCUSUM simulated out-of-control ARL and ED for changes in covariance matrix. Each cell is on the following form: ARL$_1$ (ED). The ARL$_0$ is equal to 100. $10^5$ replications was used in this simulation study.\label{LongTable1}}
+\begin{tabular}{lccccc}
+\toprule
+& \multicolumn{5}{c}{$\Delta$} \\ \cmidrule(r){2-6}
+$k$ & 0.01 & 0.1325 & 0.255 & 0.3775 & 0.5 \\[0.1cm]
+\midrule
+ 0.3 & 92.84 (72.00) & 59.59 (43.69) & 30.55 (23.19) & 18.84 (11.49) & 13.72 (6.84) \\[0.1cm]
+\midrule
+  0.4 & 94.18 (72.23) &  57.54 (45.90) & 25.71 (21.32) & 14.49 (8.97) & 10.87 (4.44) \\[0.1cm]
+\midrule
+  0.5 & 87.16 (76.87) & 48.35 (39.75) & 18.11 (12.80) & 10.44 (3.47) & 7.85 (1.10) \\[0.1cm] 
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Scenario 2 - The error rate of lane 1 shows increasingly poor behaviour}
+<<HotellingT2case2>>=
+ChangeMeanFun<- function(mu0,x) { 
+  mu0 + c(rep(c(0,0,x),2),rep(0,length(mu0)-6))
+}
+
+HotellingChange<- function(i){
+  data <- MASS::mvrnorm(n=500, mu=ChangeMeanFun(mu0 = mu0, x=i), Sigma=Sigma0)
+  Hotellings <- apply(data,1, function(j) HotellingT2(x_new=j, mu0=mu0, Sigma0=Sigma0))
+  FirstAbove <- which(Hotellings>QuantileHot) %>% first()
+  
+  if (is.na(FirstAbove)==TRUE)
+  {
+    FirstAbove <- 500
+  }
+  return(FirstAbove)
+}
+
+exChange<- changeVector.case2[c(1,3,5,8,10)] 
+#Hot_list2 <- c()
+#for (i in exChange){
+#  mcuh <- replicate(1e5, HotellingChange(i=i))
+#  Hot_list2 <- c(Hot_list2, mean(mcuh))
+#}
+#save(Hot_list2, file="../Data/Scenario2Hotelling.Rdata")
+load("../Data/Scenario2Hotelling.Rdata")
+@
+In this scenario we would like to investigate how the charts behave in a situation where only two variables in a lane is effected by some unknown change. In this case we assume that $\delta_1=\delta_2=0$ and $\delta_3>0$. This implies that the error rate increase on average, for lane 1 quality measurements. In the case of changes in the covariance matrix, we assume that the variance will increase and that covariance is held constant. All elements in the matrix $\Delta_1$ are zero except for the third and sixth diagonal element. In Figure \ref{fig:ARL1meanCase2} we can see the ARL$_1$ and ED for the mean in scenario 2. Note that the values of $\delta$ are larger compared to scenario 1. In comparison to scenario 1, it takes a relatively large $\delta$ to discover a change in the error rate variables of lane 1. Hotelling's $T^2$ statistic did not show any indication of a change, the smallest out-of-control ARL for all $\delta$ was equal to $\Sexpr{min(Hot_list2)}$.
+
+In table \ref{LongTable2} the results for the ARL$_1$ and ED for simulated changes in the covariance matrix. Here, the value of the allowance constant is seen to have a impact on detecting changes in variance structure of the covariance matrix. The optimal choice of $k$ is equal to $0.5$ for this specific scenario and size of $\Delta$. 
+
+In Table \ref{OffsetTable} we can see the average offset of the change-point estimation procedure for scenario 1 and 2. For increasing values of $\delta$ the estimation procedure becomes more accurate, on average. For small values of $\delta$ we overestimate the change-point. For large values of $\delta$ we start to underestimate the change-point. It should be noted that in cases of large and small $\delta$ we have a very unbalanced sample. 
+
+<<ARL1meanCase2, fig.cap="Out-of-control ARL simulations of Scenario 2 - changes in the mean of the error rate of lane one.", fig.height=4>>=
+ggplot.tmp <- do.call("cbind",ARL1.case2) %>% as.data.frame()
+ggplot.tmp$x <- changeVector.case2
+colnames(ggplot.tmp) <- c(paste0("k",c(0.3,0.4,0.5)), "x")
+p1 <- ggplot(ggplot.tmp)+
+  geom_line(aes(y=k0.3,x=x, linetype="solid")) +
+  geom_line(aes(y=k0.4,x=x, linetype="dashed")) +
+  geom_line(aes(y=k0.5,x=x, linetype="dotdash")) +
+  ylab(expression(ARL[1])) +
+  xlab(expression(delta)) +
+  scale_linetype("Allowance \n constant", labels=paste0("0.",3:5)) +
+  theme_bw() +
+  theme(legend.position="right") 
+
+
+ggplot.tmp <- do.call("cbind",ED.case2) %>% as.data.frame()
+ggplot.tmp$x <- changeVector.case2
+colnames(ggplot.tmp) <- c(paste0("k",c(0.3,0.4,0.5)), "x")
+
+p2 <- ggplot(ggplot.tmp) +
+  geom_line(aes(y=k0.3,x=x), linetype=1) +
+  geom_line(aes(y=k0.4,x=x), linetype=2) +
+  geom_line(aes(y=k0.5,x=x), linetype=3) +
+  theme_bw() +
+  ylab("ED") +
+  xlab(expression(delta)) +
+  theme(legend.position="none")
+p3 <- get_legend(p1)
+p1 <- p1 + theme(legend.position="none")
+
+grid.arrange(p1,p2,p3, ncol=3, widths=c(2.3, 2.3, 0.8))
+@
+
+<<>>=
+ARL1sigma <- do.call("rbind",ARL1Sigma.case2)
+colnames(ARL1sigma) <-  changeVectorSigma.case2
+
+EDsigma <- do.call("rbind", EDSigma.case2)
+colnames(EDsigma) <-  changeVectorSigma.case2
+EDsigma<- round(EDsigma,2)
+
+#xtable(ARL1sigma)
+#xtable(EDsigma)
+@
+
+\begin{table}[ht]
+\centering
+\caption{Scenario 2. MCUSUM simulated out-of-control ARL and ED for changes in covariance matrix. Each cell is on the following form: ARL$_1$ (ED). The ARL$_0$ is equal to 100. $10^5$ replications was used in this simulation study.\label{LongTable2}}
+\begin{tabular}{lccccc}
+\toprule
+& \multicolumn{5}{c}{$\Delta$} \\ \cmidrule(r){2-6}
+$k$ & 0.05 & 0.6625 & 1.275 & 1.8875 & 2.5 \\[0.1cm] 
+\midrule
+ 0.3 & 94.45 (74.05) & 70.15 (51.24) & 49.53 (34.93) & 35.46 (23.63) & 26.87 (16.88) \\[0.2cm]
+\midrule
+  0.4 & 95.46 (73.17) & 68.24 (49.39) & 46.28 (31.53) & 30.98 (19.90) & 22.21 (12.89) \\[0.2cm] 
+\midrule
+ 0.5 & 88.29 (66.32) & 58.54 (42.01) & 37.56 (23.46) & 22.31 (12.33) & 15.44 (6.60) \\[0.2cm] 
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Table containing $\bar{D}$ for both scenarios. 20 in control observations was used together with a allowance constant of $0.3$.\label{OffsetTable}}
+\begin{tabular}{lcccccccccc}
+\toprule
+\textbf{Sc. 1} & \multicolumn{10}{c}{$\delta$} \\ \cmidrule(r){2-11} 
+ & 0.0001 & 0.0052 & 0.0103 & 0.0164 & 0.0215 & 0.0276 & 0.0327 & 0.0388 & 0.0439 & 0.0500 \\ 
+ $\lfloor ED \rfloor$ & 76 & 7 & 3 & 2 & 2 & 1 & 1 & 1 & 1 & 1 \\
+ $\bar{D}$ & 42.63 & 6.43 & 0.29 & -0.06 & -0.21 & -0.24 & -0.41 & -0.88 & -1.77 & -1.63 \\[0.1cm]
+\midrule
+\textbf{Sc. 2} & \multicolumn{10}{c}{$\delta$} \\ \cmidrule(r){2-11} 
+ & 0.05 & 0.27 & 0.48 & 0.70 & 0.92 & 1.13 & 1.35 & 1.57 & 1.78 & 2.00 \\
+ $\lfloor ED \rfloor$ & 65 & 23 & 14 & 10 &  8 &  7  & 6  & 5 & 5 & 4 \\
+$\bar{D}$ & 41.65 & 5.60 & 0.20 & -0.04 & -0.13 & -0.17 & -0.31 & -0.75 & -1.64 & -1.53 \\
+\bottomrule
+\end{tabular}
+\end{table}
+% \subsection{Robustness (optional section)}
+% \begin{enumerate}
+% \item What happens under the t-distribution or maybe something skew? 
+% \item What happens when the mean and/or covariance matrix is wrongly estiamted? How does this effect control limits etc? 
+% \end{enumerate}

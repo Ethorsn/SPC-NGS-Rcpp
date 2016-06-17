@@ -1,0 +1,173 @@
+\Sexpr{set_parent('../MainThesis.Rnw')}
+<<loads>>=
+library(dplyr)
+library(ggplot2)
+load("../Data/meanH.Rdata")
+
+h <- H_Listmean[[1]]$Intervals %>% na.omit() %>% tail(1) %>% mean() %>% round(2)
+k <- 0.3
+load("../Data/Benchmarks.Rdata")
+ggplot.tmp<- group_by(benchman, expr) %>% summarise("Seconds"=mean(time)/1e6)
+@
+In this section we will shortly show some benchmarks of the \textt{SimulateARL0} function implemented in Rcpp, which is used in to simulate the in control ARL for a given control limit and allowance constant. Almost every function used in simulations are implemented in Rcpp. To create benchmarks we will use the following settings 
+\begin{itemize}
+\item The in control mean vector and covariance matrix
+\item A allowance constant equal to $\Sexpr{k}$
+\item The control limit $\Sexpr{h}$
+\item The number of threads was held constant, equal to 7. 
+\end{itemize}
+The number of simulations N=$\{10^2,10^3,10^4,10^5\}$. Each simulation is performed 10 times and the average time is taken as the benchmark for this specific setting. The test system was a Intel\textregistered Core i7-4770S@3.1Ghz with 16Gb system RAM running Ubuntu 14.04.4. In Figure \ref{fig:BenchmarkFigure} we can see how the average time it takes to perform N simulations. The results are shown on a log 10 scale. It takes around $\Sexpr{round(ggplot.tmp$Seconds[3]/(60*60),2)}$ minutes to perform a $10^4$ simulations.
+<<BenchmarkFigure, fig.cap="Benchmark of the SimulateARL0 function, implemented in Rcpp together with OpenMP. ", fig.height=4>>=
+library(ggplot2)
+ggplot(ggplot.tmp) +
+  geom_point(aes(x=expr,y=Seconds)) +
+  xlab("Number of simulations") +
+  theme_bw() +
+  scale_y_log10() +
+  ylab("Seconds (log10)")
+@
+{\Large Present Rcpp code here? Will get very messy!}
+
+%The Rcpp code for the \texttt{SimulateARL0} function is presented below. The functions \texttt{SnewFun} and \texttt{CFun} calculates $S_{t+1}$ and $C_t$ respectively.\textit{THIS GETS VERY MESSY. REMOVE?}
+<<RcppCode, tidy=TRUE, engine='Rcpp'>>=
+#include <RcppArmadillo.h>
+#include <math.h>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
+using namespace std;
+using namespace Rcpp;
+using namespace arma;
+
+// [[Rcpp::plugins(openmp)]]
+// [[Rcpp::depends(RcppArmadillo)]]
+
+rowvec SnewFun(rowvec Snew, rowvec Sold, rowvec mu0, mat Sigma0, double k) {
+  //inits
+  rowvec SNEW;
+  mat SigmaInv = Sigma0.i();
+  
+  colvec Y = solve(Sigma0, trans(Snew+Sold-mu0));
+  // statistical distance, Mahalanobis distance.
+  double D = pow(as_scalar((Snew+Sold-mu0)*Y),0.5);
+  if (D>k){
+    double Dinv = as_scalar(pow(D,-1));
+    SNEW = (Snew+Sold-mu0)*(1-k*Dinv);
+  }else{
+    int length = Sigma0.n_rows;
+    SNEW = zeros<rowvec>(length);
+  };
+  return SNEW;
+}
+
+double CFun(rowvec Snew, rowvec Sold, rowvec mu0, mat Sigma0, double k){
+  //inits
+  double C;
+  rowvec SNEW;
+  mat SigmaInv = Sigma0.i();
+  
+  colvec Y = solve(Sigma0, trans(Snew+Sold-mu0));
+  // statistical distance, Mahalanobis distance.
+  double D = pow(as_scalar((Snew+Sold-mu0)*Y),0.5);
+  if (D>k){
+    double Dinv = as_scalar(pow(D,-1));
+    SNEW = (Snew+Sold-mu0)*(1-k*Dinv);
+    C = as_scalar(SNEW * SigmaInv * SNEW.t());
+  }else{
+    C = 0;
+  };
+  return C;
+}
+
+// For simulating ONE multivariate normal obs.
+rowvec mvrnormArma(rowvec mu, mat sigma) {
+  int ncols = sigma.n_cols;
+  rowvec Y = randn<rowvec>(ncols);
+  rowvec ret = mu + Y * chol(sigma);
+  return ret;
+}
+
+// function for taking the midpoint
+inline double midpoint(double val1, double val2) {
+  return (val1 + val2) / 2;
+}
+
+// Simulate ARL0 based on k and h in parallel using open MP. 
+// [[Rcpp::export]]
+rowvec SimulateARL0(SEXP n, SEXP h, SEXP k, SEXP mu0, SEXP Sigma0, SEXP No_threads) {
+  // inits
+  int N = as<int>(n);
+  double H = as<double>(h);
+  double K = as<double>(k);
+  int Nthread = as<int>(No_threads);
+  
+  rowvec Mu = as<rowvec>(mu0);
+  
+  mat Sigma = as<mat>(Sigma0);
+  rowvec VecReturn = zeros<rowvec>(N);
+  
+  size_t l; 
+  int counter;
+  double Cstat;
+  rowvec S_old(Sigma.n_cols), Sims(Sigma.n_cols);
+  // Define errors
+  class InvalidDim_exception: public std::exception {};
+  class NegParams_exception: public std::exception {};
+                                                     
+  try{
+    if (Sigma.n_cols != Mu.size() || Sigma.n_rows != Mu.size())
+    {
+      // Sigma, Mu and Mu1 does not have the same dimensions.
+      throw InvalidDim_exception();
+    }
+    else if (K < 0 || H < 0)
+    {
+      // k or h is negative
+      throw NegParams_exception();
+    }
+    else
+    {
+      printf("Inits done! Starting simulations. \n");
+    }
+    
+    /*
+     * The addition of #pragma from OpenMP does everything in the background.
+     * So the following code is in parallel, using num_threads(Nthread) threads.
+     */
+#pragma omp parallel for num_threads(Nthread) shared(VecReturn) private(l, counter, Cstat, S_old, Sims) firstprivate(H, K, Mu, Sigma)
+      for (l = 0; l < N;++l){
+        // Inits for a run
+        counter = 1;
+        Cstat = 0;
+        S_old = zeros<rowvec>(Sigma.n_cols);
+        // simulating the expectation.
+        for (int k=0; k<10000; ++k){
+          Sims = mvrnormArma(Mu, Sigma);
+          // Use MCUSUM scheme, first update Cstat then S_old.
+          Cstat = CFun(Sims, S_old, Mu, Sigma, K);
+          S_old = SnewFun(Sims, S_old, Mu, Sigma, K);
+          if (Cstat > H){break;};
+          counter += 1;
+        };
+        VecReturn(l) = counter;  
+      };
+  }
+  catch(NegParams_exception e){
+    // add dimensions or print values of parameters
+    cerr << "Negative values of the control limit (h) or allowance constant (k) are not allowed." << endl;
+    throw e;
+    rowvec ret;
+    return ret;
+  }
+  catch(InvalidDim_exception e){
+    // add dimensions or print values of parameters
+    cerr << "The dimensions of the mean vector (mu0) and Covariance matrix (Sigma0) are not the same." << endl;
+    rowvec ret;
+    return ret;
+  }
+  return VecReturn;
+}
+
+@

@@ -1,0 +1,535 @@
+\Sexpr{set_parent('../MainThesis.Rnw')}
+<<RlibsFuns, echo=FALSE, chache=TRUE>>=
+# Libraries
+library(ggplot2)
+library(reshape2)
+library(GGally)
+library(lubridate)
+library(tidyr)
+library(dplyr)
+library(portes)
+library(car) 
+library(gridExtra)
+library(grid)
+library(ggExtra)
+library(parallel)
+library(xtable)
+# load data + functions
+# must be run in this order!!!
+source("../FunctionsAndRcpp/VizCorFuns.R")
+#source("../FunctionsAndRcpp/mysqlScript.R")
+load("../Data/MySQL_data.Rdata")
+source("../FunctionsAndRcpp/BotlvlSeriesExtraction.R")
+
+###################### Hadley Wickhams function
+grid_arrange_shared_legend <- function(...) {
+    plots <- list(...)
+    g <- ggplotGrob(plots[[1]] + theme(legend.position="bottom"))$grobs
+    legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
+    lheight <- sum(legend$height)
+    grid.arrange(
+        do.call(arrangeGrob, lapply(plots, function(x)
+            x + theme(legend.position="none"))),
+        legend,
+        ncol = 1,
+        heights = unit.c(unit(1, "npc") - lheight, lheight))
+}
+#######################
+@
+
+<<Taglvl>>=
+N <- unique(df.sample.results$flowcell_id) %>% length()
+First.date <- first(df.sample.results$Date)
+last.date <- last(df.sample.results$Date)
+@
+In this section we will conduct a exploratory data analysis. We will first introduce the datasets which will be used in this thesis and then continue with exploring them seperately. We will focus our attention to the data of one of each model. 
+
+The data to be used in this thesis consists of two sets. The first set contains observations on the lowest level, what we called tag level. There is no fixed number of tags for each run and therefore each flowcell can contain a different number of measurements. In the tag level dataset, there are a total of $\Sexpr{N}$ runs (unique flowcells) which have been performed since \Sexpr{year(First.date)} up until the end of \Sexpr{year(last.date)}. 
+<<FilterSample>>=
+# Number of unique flowcells
+N2 <- unique(All.df.reduced$flowcell_id) %>% length()
+Missing <- anti_join(All.df.reduced,df.sample.results, by="flowcell_id") %>% .$flowcell_id %>% unique() %>% length()
+
+# exclude data before 2013.
+df.sample.results <- filter(df.sample.results, year(Date)>2012)
+All.df.reduced <- filter(All.df.reduced,year(Date)>2012)
+
+@
+The second dataset contains observations from what we called read level. There are a total of $\Sexpr{N2}$ runs which implies that there is a difference between the datasets. A total of $\Sexpr{Missing}$ runs are missing from the Tag level. The missing runs are from the MiSeq 1, HiSeq 3 and 6 machines. These missing runs will be excluded from the data. Also, runs performed in 2012 was done so under different circumstances. It was advised that data from 2012 was not to be used. Therefore, quality control data from 2012 will be removed from our data set.
+
+In Table \ref{CompCycl} we can see the completed run cycles for the HiSeq (Hi) and HiSeqX (HiX) machines. We can start with noticing that HiSeq 1 and 2 are not present in the table. These have been taken out of production. The HiSeqX machines have all been run on the same cycle setting, with every completed cycle equal to 150. This is the only setting used at the SNP\&SEQ platform for HiSeqX. The HiSeq machines shows a much wider range of completed cycles. This is a consequence of the wide range of settings that have been used. We can see that HiSeq 6 (Hi6) have most runs in the vicinity of 124-125 completed cycles. A cycle setting of 126 is one of the most common cycle settings for HiSeq machines at the SNP\&SEQ platform. We will use this machine to represent the HiSeq machines. As the HiSeqX machines did not differ in the cycle setting we will use the HiSeqX 1 to represent the HiSeqX machines. The MiSeq 1 machine has a wide range of 0-500 completed cycles with a lot of different run settings. Those observations having 0 completed cycles are runs which have been documented to be malfunctions. It was removed to shorten the table but will be included, to some extent, in the exploratory analysis.
+
+The last row in Table \ref{CompCycl} shows the total number of runs performed on each machine. The HiSeq 4 machine has most runs of all but also a large diversity in the run settings. 
+<<Table, results='asis', warnings=FALSE, eval=FALSE>>=
+# These transformations are to create the table containing the number of flowcells on a specific completed run cycle.
+ggplot.tmp <- df.sample.results[df.sample.results$Instrument != "MiSeq 1",] %>%
+  group_by(Instrument,cycles) %>%
+  summarise(x=length(unique(flowcell_id)))
+
+ggplot.tmp$cycles <- as.factor(ggplot.tmp$cycles)
+
+library(xtable)
+xtab <- spread(ggplot.tmp,key="Instrument",value=x)
+colnames(xtab) <- c("cycles", paste0("Hi",3:6), paste0("HiX",1:5))
+
+xtab <- rbind(xtab,c("NA",apply(xtab[,-1],2,sum,na.rm=TRUE)))
+
+print(
+  xtable(xtab,
+         caption = "Table showing the number of completed cycles for each HiSeq (Hi) and HiSeqX (HiX) machine. Notice that the MiSeq 1 machine is removed.",
+         label="CompCycl"),
+  include.rownames=FALSE)
+# The table presented in the Thesis is somewhat modified in the appearance but NOT in the content.
+@
+% latex table generated in R 3.2.3 by xtable 1.8-2 package
+% Tue Mar  1 09:34:31 2016
+\begin{table}[!t]
+\centering
+\caption{Table showing the number of flowcells with a specific number of completed cycles for HiSeq (Hi) and HiSeqX (HiX) machine.} 
+\begin{tabular}{lccccccccc}
+  \toprule 
+  & \multicolumn{9}{c}{Machine} \\ \cmidrule(r){2-10} 
+Cycles & Hi3 & Hi4 & Hi5 & Hi6 & HiX1 & HiX2 & HiX3 & HiX4 & HiX5 \\ 
+  \midrule
+49 & 7 &  &  &  &  &  &  &  &  \\ 
+  50 & 16 & 10 & 11 & 7 &  &  &  &  &  \\ 
+  60 &  &  &  & 3 &  &  &  &  &  \\ 
+  99 & 2 & 4 & 2 & 1 &  &  &  &  &  \\ 
+  100 & 73 & 49 & 15 & 6 &  &  &  &  &  \\ 
+  124 &  & 22 & 22 & 30 &  &  &  &  &  \\ 
+  125 &  & 53 & 46 & 50 &  &  &  &  &  \\ 
+  150 & 11 & 2 & 14 & 16 & 30 & 27 & 22 & 32 & 16 \\ 
+  200 &  &  &  & 1 &  &  &  &  &  \\ 
+  250 & 6 & 1 &  &  &  &  &  &  &  \\ 
+  \midrule
+  $\Sigma$ & 115 & 141 & 110 & 114 & 30 & 27 & 22 & 32 & 16 \\ 
+   \bottomrule
+\end{tabular}
+\label{CompCycl}
+\end{table}
+
+We will now investigate investigate the mean q values of each successive run at a tag level. In Figure \ref{fig:TagLevelTS} we can see the mean of mean q tag level measurements together with the range (min to max) for three different machines of different types for lane 1 stratified on read. The observations are presented in their order of appearance.
+
+For lane 1 measurements, the mean for HiSeq 6 of mean q tag level measurements is very connected to its range. If the range is large then the mean is usually worse. The variability of mean tag level measurements in read 2 is larger compared to measurements made in read 1. HiSeqX is seen to have a small range in each run, for read 1 and 2 measurements. Read 2 measurements are lower on average but do not show any substaintial increase in variance. MiSeq 1 is seen to be the worst of all in terms of its mean q tag level measurements. It is clearly seen in the large variance of the means and the large range in some runs. This was to be expected since the MiSeq machine was used for experimental samples on several different settings. 
+<<TagLevelTS, fig.cap="Figure containing the range (min to max) and mean of each successive run (flowcell). Here, we are showing read 1 and 2 in lane 1, disregarding what type of setting the run is performed on.", fig.height=7,fig.width=10, fig.pos="!htbp">>=
+
+# Create data.frame containing mean and range of mean q measurements on tag level
+ggplot.tmp1 <- df.sample.results %>%
+  filter(Instrument == "HiSeq 6" |
+         Instrument == "MiSeq 1" |
+         Instrument == "HiSeqX 1", 
+         lane_num == 1) %>%
+  group_by(Date,flowcell_id, Instrument, read_num) %>%
+  summarise(mn = mean(mean_q), min = min(mean_q), max = max(mean_q)) %>%
+  group_by() %>% 
+  arrange(desc(Instrument)) 
+# How many observations for each machine?
+n1 <- filter(ggplot.tmp1, Instrument == "HiSeq 6") %>% nrow()
+n2 <- filter(ggplot.tmp1, Instrument == "HiSeqX 1") %>% nrow()
+n3 <- filter(ggplot.tmp1, Instrument == "MiSeq 1") %>% nrow()
+
+# Order of appearance: MiSeq 1, HiSeqX 1, HiSeq 6  
+OrderOfApp <- c(rep(seq(1,n3/2, by=1), each=2), rep(seq(1,n2/2, by=1),each=2), rep(seq(1,n1/2, by=1),each=2))
+# Mutate Date to order of appearance.
+ggplot.tmp1 <- mutate(ggplot.tmp1, Date = OrderOfApp)
+# Rename variables for nicer printing
+ggplot.tmp1 <- rename(ggplot.tmp1, Machine=Instrument, Read=read_num)
+# Create figure of mean and range of mean q measurements on tag level
+ggplot(ggplot.tmp1,
+       aes(x=Date,y=mn)) +
+  geom_errorbar(aes(ymin=min,
+                    ymax=max,
+                    color="#7fcdbb"),
+                stat="identity",
+                width=0.5,
+                alpha=0.8) +
+  scale_shape_identity() +
+  geom_point(aes(color="#990000"), alpha=0.6) +
+  facet_grid(Read~Machine,
+             scales = "free",
+             #ncol=2,
+             labeller = label_both) +
+  theme_bw() +
+  ylab("value") +
+  scale_color_manual("",
+                     label=c("Range (min-max)","mean"),
+                     values=c("#7fcdbb","#990000")) +
+  theme(axis.text.x=element_text(angle=60,
+                                 vjust=0.7,
+                                 hjust=0.8),
+        legend.position="bottom") +
+  guides(color=guide_legend(override.aes=list(shape=c(NA,16),linetype=c(1,0))))+
+  ggtitle("mean q score measurements on Tag level") +
+  xlab("Order of appearance")
+@
+We will now focus on the HiSeq 6 machine with 102 to 126 completed cycles, in order to make this EDA sufficiently short. 
+
+In Figure \ref{fig:HiSeq6Comb} the range together with the mean of lane 1 and read 1 is shown in their order of appearance. The variables shown here are percent data above a q-score of 30 and the percent tag error. These measurements are from tag level for the HiSeq 6 machine with a cycle setting of 102 to 126. The last figure contains the number of observations in each lane 1 and read 1. %Also, the scale of the percentage is reversed such that both variables graphical interpretation are the same. A low value is not desirable. 
+The first variable, the percentage of data above a Q score of 30, which we will refer to as percent Q30, shows a overall small amount of variation. When the spread increases the mean does aswell. The percent tag error can be seen to be very close to zero and at some times equal to zero. This is surprising since the construction of the variable is connected to the error rate. If one is zero, the other should be aswell. However, for \textit{some} runs with zero percent tag error, the error rate is well above zero. We will refrain from using this variable since the quality of it can not be assured. The number of observations contained in lane 1 read 1 varies a lot. It does not seem to relate to the range nor the mean of neither variable.
+<<HiSeq6Comb, fig.cap="Figure showing the range (min to max) and mean of each succsessive run (flowcell) in lane 1, read 1, of the two variables Percent q30 and Percentage tag error. All runs shown where performed on 126 cycles.", fig.pos="!htb">>=
+
+# Completed run cycle. Assumed to represent the actual run cycles
+Cycl <- c(102,126)
+# create a data.frame for plotting the range and mean of variables percent q30 and percent tag error, lane 1 read 1. 
+ggplot.tmp <- df.sample.results %>%
+  filter(Instrument == "HiSeq 6",
+         cycles>=Cycl[1],
+         cycles<=Cycl[2],
+         lane_num == 1,
+         read_num == 1) %>%
+  group_by(flowcell_id, Date) %>%
+  summarise(mnPQ30 = mean(pct_q30/100), minPQ30 = min(pct_q30/100), maxPQ30 = max(pct_q30/100),
+            mnPTerr = mean(pct_tag_err/100), minPTerr = min(pct_tag_err/100), maxPTerr = max(pct_tag_err/100),
+            NumbObs=length(pct_q30/100)) %>%
+  arrange(desc(Date))
+
+# Figure containing mean and range of percent q30 variable for read = 1, lane = 1
+p1 <- ggplot(ggplot.tmp,
+       aes(x=seq(0,length(Date)-1),y=mnPQ30)) +
+  geom_errorbar(aes(ymin=minPQ30,
+                    ymax=maxPQ30,
+                    color="#7fcdbb"),
+                stat="identity",
+                width=0.5,
+                alpha=0.8) +
+  scale_shape_identity() +
+  geom_point(aes(color="#990000"), alpha=0.6) +
+  theme_bw() +
+  ylab("value") +
+  scale_color_manual("",
+                     label=c("Range (min-max)","mean"),
+                     values=c("#7fcdbb","#990000")) +
+  ggtitle("Percent q30") +
+  theme(axis.text.x=element_text(angle=60,
+                                 vjust=0.7,
+                                 hjust=0.8),
+        axis.title.y=element_text(size=8),
+        title = element_text(size=9),
+        legend.position="bottom") +
+  guides(color=guide_legend(override.aes=list(shape=c(NA,16),linetype=c(1,0))))+
+  xlab("") +
+  scale_y_continuous(limits=c(0,1)) 
+
+# Figure containing mean and range of percent tag error variable for read = 1, lane = 1
+p2 <- ggplot(ggplot.tmp,
+       aes(x=seq(0,length(Date)-1),y=mnPTerr)) +
+  geom_errorbar(aes(ymin=minPTerr,
+                    ymax=maxPTerr,
+                    color="#7fcdbb"),
+                stat="identity",
+                width=0.5,
+                alpha=0.8) +
+  scale_shape_identity() +
+  geom_point(aes(color="#990000"), alpha=0.6) +
+  theme_bw() +
+  ggtitle("Percent tag error") +
+  ylab("value") +
+  scale_color_manual("",
+                     label=c("Range (min-max)","mean"),
+                     values=c("#7fcdbb","#990000")) +
+  theme(axis.text.x=element_text(angle=60,
+                                 vjust=0.7,
+                                 hjust=0.8),
+        axis.title.y=element_text(size=8),
+        title = element_text(size=9),
+        legend.position="bottom") +
+  guides(color=guide_legend(override.aes=list(shape=c(NA,16),linetype=c(1,0)))) +
+  xlab("")
+# Figure with number of observations in each read = 1, lane = 1. 
+p3 <- ggplot(ggplot.tmp,aes(x=seq(0,length(Date)-1),y=NumbObs)) +
+  geom_point(alpha=0.8) +
+  theme_bw() +
+  ylab("value") +
+  ggtitle("Number of observations") +
+  xlab("Order of appearance") +
+  theme(axis.text.x=element_text(angle=60,
+                                 vjust=0.7,
+                                 hjust=0.8),
+        title = element_text(size=9),
+        axis.title.y=element_text(size=8)) 
+grid_arrange_shared_legend(p1,p2,p3)
+rm(p1,p2,p3)
+@
+We will now investigate what we called the read level measurements. At this level only one observation per read and lane is supplied. We can therefore consider each run as a realisation of a random vector following a multivariate distribution. In this setting we have 7 different variables, with 16 measurements in each. Since the HiSeq 6 machine has been our main interest so far, we will continue in this fashion and compare it to the other HiSeq machines. All runs will henceforth be using all 8 lanes and a cycle setting on 126. The HiSeq 3 machine do not have any runs on this specific cycle setting and will therefore be omitted.
+
+In Figure \ref{fig:MeanVectorFigure} we have the mean together with the range of the error rate variable. We can see that no measurements are zero in this case. The HiSeq 5 machine seems to have a consistently lower error rate compared to the other machines. The HiSeq 6 machine has shown one, or possibly several, runs with large error rates in different lanes. To further investigate the distribution of the error rate together with those variables which have not been looked upon, we will look at them in a histogram.  
+<<MeanVectorFigure, fig.cap="Mean together with the range of the error rate of each lane and read (lane\\_read). Notice that the HiSeq 5 has the lowest mean error rate of all HiSeq machines.", fig.pos="!htb", fig.height=4>>=
+
+# Extract HiSeq 4 data on wide format. Remove rapid runs and then select error rate.
+Hiseq4 <- ExtractBotLvlTimeseries(c("error_rate"),"HiSeq 4",All.df.reduced) %>%
+  filter(cycles>=Cycl[1],
+         cycles<=Cycl[2]) %>%
+  # now remove those corresponding to rapid runs on the same cycle level, these only use 2 lanes and have NA on the rest
+  na.omit() %>%
+  # select error rate variable for each lane and read
+  select(grep("error_rate", colnames(.)))
+# Create Mean, max, min for each lane and read.
+Hiseq4 <- data.frame("Mean"=colMeans(Hiseq4),
+                     "Max"=apply(Hiseq4,2, max),
+                     "Min"=apply(Hiseq4,2, min),
+                     "lane_read"=as.factor(colnames(Hiseq4)),
+                     "Machine"=as.factor("HiSeq 4")) %>%
+  # place into long format for plotting
+  melt(measure.vars=c("Mean"))
+
+# Do the same for HiSeq 5 data
+Hiseq5 <- ExtractBotLvlTimeseries(c("error_rate"),"HiSeq 5",All.df.reduced) %>%
+    filter(cycles>=Cycl[1],
+           cycles<=Cycl[2]) %>%
+   na.omit() %>%
+   select(grep("error_rate", colnames(.)))
+
+Hiseq5 <- data.frame("Mean"=colMeans(Hiseq5),
+                     "Max"=apply(Hiseq5,2, max),
+                     "Min"=apply(Hiseq5,2, min),
+                     "lane_read"=as.factor(colnames(Hiseq5)),
+                     "Machine"=as.factor("HiSeq 5")) %>%
+  melt(measure.vars=c("Mean"))
+
+# Do the same for HiSeq 6 data
+Hiseq6 <- ExtractBotLvlTimeseries(c("error_rate"),"HiSeq 6",All.df.reduced) %>%
+  filter(cycles>=Cycl[1],
+         cycles<=Cycl[2]) %>%
+  # now remove those corresponding to rapid runs on the same cycle level, these only use 2 lanes and have NA on the rest
+  na.omit() %>%
+  select(grep("error_rate", colnames(.)))
+
+Hiseq6 <- data.frame("Mean"=colMeans(Hiseq6),
+                     "Max"=apply(Hiseq6,2, max),
+                     "Min"=apply(Hiseq6,2, min),
+                     "lane_read"=as.factor(colnames(Hiseq6)),
+                     "Machine"=as.factor("HiSeq 6")) %>%
+  melt(measure.vars=c("Mean"))
+
+ggplot.tmp <- rbind(Hiseq4,Hiseq5,Hiseq6)
+levels(ggplot.tmp$lane_read) <- do.call("rbind",strsplit(levels(ggplot.tmp$lane_read),"error_rate_"))[,2] 
+
+# Create mean and range figure for error rate.
+ggplot(ggplot.tmp,
+       aes(y=value, x=lane_read, color=Machine)) +
+  geom_point(aes(fill=as.factor(1)), size=2, position=position_dodge(width=0.5), alpha=0.8) +
+  geom_errorbar(aes(ymax=Max, ymin=Min, width=0.2, fill=as.factor(2)), alpha=0.5, position=position_dodge(width=0.5), show.legend = TRUE) +
+  scale_y_continuous(limits=c(-0.01,2), breaks = c(0,0.5,1,1.5,2)) +
+  coord_flip() +
+  theme_bw() +
+  scale_color_brewer(type = "qual", palette=6,guide = guide_legend(reverse=TRUE)) +
+  scale_fill_manual("",
+                    labels=c("Mean","Range (min-max)"),
+                    values =c("black","blue")) +
+  guides(fill=guide_legend(override.aes=list(shape=c(16,NA), linetype=c(0,1)))) +
+  xlab("Error rate (lane_read)") 
+@
+
+<<Readlvlseries>>=
+# Extract HiSeq 6 data, all variables on read level
+HiSeq6.botlvl.series <- ExtractBotLvlTimeseries(c("mean_q","pct_q30","error_rate","raw_clusters","raw_density","pf_clusters","pf_density"),"HiSeq 6",All.df.reduced)
+## Extract "High output v4" runs: 102-126 cycles using 8 lanes
+v4.HiSeq6.botlvl.series <- filter(HiSeq6.botlvl.series, 
+                                  cycles>=Cycl[1],
+                                  cycles<=Cycl[2]) %>% 
+  # now remove rapid runs on the same cycle level, these only use 2 lanes and have NA on the rest
+  na.omit()
+@
+In Figure \ref{fig:ReadlvlER} we have a histograms of the error rate, raw cluster density and the number of raw clusters for lane 1 and 2, both reads. In the error rate (row one), we can see that read 2 contains more variability compared to read 1. The distribution of read 1 is more peaked while the distribution for read 2 is quite flat. We can also see that the distribution is somewhat skewed, tending towards the right. For the two later rows, the density and cluster variable can be seen to be close to symmetric. The distribution of the density and cluster variables also look very much alike. 
+%Error rate measurements from read 1 can be stable while read 2 deviates. An example can be seen around the 20th observation in the error rate for lane 1. 
+%This deviating behaviour is not necessarily seen in any other variable, in the same lane and read. 
+%What can be seen in the second and third row is that the raw- density and cluster variables correlate almost perfectly. 
+%This is seen in several variables. The following variables is almost perfectly correlated; raw clusters, post filter clusters, raw density, post filter density for each read inside a lane. 
+%We will exclude all but the raw clusters variable in the analysis. 
+%The raw cluster variable is also almost perfectly correlated for each read inside a lane. This can be seen in Figure \ref{fig:ReadlvlER} when comparing the variables inbetween reads for a given lane. 
+%We will remove read 2 for the raw cluster variable in every lane, from the analysis.  
+<<ReadlvlER, fig.cap="Error rates, the raw density and the number of raw clusters for each read in lanes 1 and 2. The variable name are listed in the following manner: Variable\\_lane\\_read.", fig.height=4.5, fig.pos="!htb">>=
+
+# Code found online and has been slightly modified.
+# http://stackoverflow.com/questions/11610377/how-do-i-change-the-formatting-of-numbers-on-an-axis-with-ggplot
+fancy_printing <- function(l) {
+     # turn in to character string in scientific notation
+     l <- format(l, scientific = TRUE)
+     for (i in 1:length(l)){
+       if (grepl("NA",l[i])==TRUE){
+         l[i] <- l[i]
+       }else{
+         if (as.numeric(l[i])>2){
+           # quote the part before the exponent to keep all the digits
+           l[i] <- gsub("^(.*)e", "'\\1'e", l[i])
+           # turn the 'e+' into plotmath format
+           l[i] <- gsub("e", "%.%10^", l[i])
+         }else{
+          l[i] <- as.numeric(l[i])
+         }
+       }
+     }
+     # return this as an expression
+     parse(text=l)
+}
+#fancy_printing(c("   NA","1e8"))
+ggplot(melt(
+  select(v4.HiSeq6.botlvl.series,
+    starts_with("error_rate_1"),
+    starts_with("error_rate_2"),
+    starts_with("raw_density_1"),
+    starts_with("raw_density_2"),
+    starts_with("raw_clusters_1"),
+    starts_with("raw_clusters_2"),
+    Date),
+  id.vars="Date"),
+  aes(x=value)) +
+  geom_histogram() +
+  facet_wrap("variable", scales = "free_x",ncol=4) +
+  theme_bw() +
+  theme(legend.position="none", plot.margin=unit(c(5.5, 15, 5.5, 5.5),"points"))  +
+  scale_x_continuous(breaks=scales::pretty_breaks(n=3), labels=fancy_printing)
+@
+The Spearman correlation matrix is visualized in Figure \ref{fig:ReadlvlCor}. The number of variables in the Figure is equal to $\Sexpr{ncol(v4.HiSeq6.botlvl.series[,-c(1:3)])}$. The correlation matrix is estimated from a sample size of $\Sexpr{nrow(v4.HiSeq6.botlvl.series)}$. In this figure the axis labels where omitted but a header for each group of variables is placed next to them. As an example, the top 16 variables in Figure \ref{fig:ReadlvlCor} corresponds to the error rate for each read and lane which is denoted by the label. We will refer to this as a section of variables. 
+
+We can see that the density and cluster sections of variables correlate almost perfectly. This is especially true for measurements on the same read in a lane. The mean q and percent q30 sections seem to be correlated to each other while not having much correlation to the cluster and density variables. The error rate is negatively correlated with percent q30 and mean q measurements from the same read and lane, while not showing much correlation to other reads and lanes. The correlation matrix can almost be placed on a block diagonal form where three first sections of variables create one block and the last four create another. %Variables on the same read and lane seem to be correlated well while 
+%A deviating pattern is is also seen in this section of variables. Those mean q and percent q30 corresponding to lane 7 read 1 and 2, shows much less correlation to the variables inside and outside section but shows very strong correlation to eachother. Also, the percent tag error shows correlation between lanes with low lane number (\textit{reformulate?}) but lanes with high lane number show very little correlation to the others. 
+
+For further analysis we will consider the quality control data for HiSeq 6 with variables mean q, error rate and percent q30. We will continue to use a cycle setting of 126. The mean q, error rate can be assumed to have support on the positive real line. These variables can not be assumed to follow a normal distribution and will therefore be transformed. We will use a Box-Cox transformation (cf. \citet{BoxCox}) on these variables and estimate the transformation parameter $\lambda$ using the Guerro method (cf. \citet{Gurrero}). Also, if necessary, we will divide the transformed variables by a constant to change the scale. The percent q30 variable has limited support on $(0,1)$ and will be transformed using the quantile normal function. Before the transformation and estimation of transformation parameters are performed we will remove those runs which are poor. Runs will be classified as poor using todays quality control criterias. 
+
+The transformation methods are more thoroughly presented in the Appendix, section \ref{NormalSection}. In this section, we also assess the assumption of normality for the transformed HiSeq 6 data, for the variables previously mentioned, together with the a short investigation of autocorrelation. For further analysis, we assume that the transformed data of the mean q, error rate and percent q30 variables are generated by a multivariate normal distribution. 
+<<ReadlvlCor,fig.cap="Spearman correlation matrix of HiSeq 6 Read level measurements. Two groupings can be seen in the correlation.", warning=FALSE>>=
+ggp <- VizCor(v4.HiSeq6.botlvl.series[,-c(1:3)], method="spearman",title="")
+N <- ncol(v4.HiSeq6.botlvl.series)
+
+tmpFUN <- function(x) return (cbind(c(2+8*(1+2*x)),c(N-8*(1+2*x))))
+df.tmp <- tmpFUN(seq(0,6))
+
+df.tmp <- data.frame(TEXT=c("Error rate","Mean Q","Percent q30","PF clusters","PF density","Raw clusters","Raw density"),df.tmp)
+
+ggp <- ggp + 
+   theme(axis.text.x = element_blank(),
+          axis.text.y = element_blank()) 
+
+# add text to picture
+for (i in 1:nrow(df.tmp)){
+  ggp <- ggp + 
+   geom_text(x=df.tmp[i,2], y=df.tmp[i,3],label=df.tmp[i,1], 
+             angle=-45,size=3.2,family="Times") 
+}
+tmpFUN <- function(x) return(cbind(N-(2+16*x)-1/2,16*x+1/2))
+df.tmp <- tmpFUN(1:7) %>% as.data.frame()  
+# Draw lines to create sections
+for (i in 1:nrow(df.tmp)){
+  ggp <- ggp + 
+    geom_segment(y=df.tmp[i,1], x=0.5, xend=df.tmp[i,2], yend=df.tmp[i,1], color="#0000004D", size=0.2) +
+    geom_segment(x=df.tmp[i,1], y=0.5, xend=df.tmp[i,1], yend=df.tmp[i,2], color="#0000004D", size=0.2) 
+}
+# print
+ggp
+# remove
+rm(df.tmp, tmpFUN)
+@
+
+
+<<ICsampleCreation>>=
+# Create a IC sample by removing values runs with large error rates and low pf_clusters
+Hiseq6.tag <- 
+  filter(df.sample.results,
+         Instrument == "HiSeq 6", 
+         cycles < Cycl[2],
+         cycles > Cycl[1]) 
+
+Hiseq6.read <- filter(All.df.reduced,
+                      Instrument=="HiSeq 6", 
+                      cycles < Cycl[2],
+                      cycles > Cycl[1])
+
+CreateICsample <- function(x, y,quality_crit){
+  # Function which creates a in control sample for tag and read level. 
+  #
+  # Args:
+  #     x: A data frame which contains "tag level" measurements. 
+  #        It is assumed that the variables specified in quality_crit are contained in this data frame.
+  #     y: A data frame which contains "read level" measurements.
+  #        It is assumed that the variables specified in quality_crit are contained in this data frame.
+  #     quality_crit: A list containing the variables and limits which we would like to use as quality limits.
+  #                   A example would be quality_crit=list(error_rate=1, pct_q30=0.7).
+  #
+  # Returns:
+  #     Returns a list where each element is a data frame representing a in control data frame. 
+  #     The list will have two element corresponding to tag and read level.
+  library(dplyr)
+  IC.read <- y %>%
+    filter(error_rate < quality_crit$err,
+           pf_clusters > quality_crit$pf_clusters) 
+  
+  # How many flowcells are removed?
+  # FlowcellRemoved <- anti_join(IC.read,y,by="flowcell_id")$flowcell_id %>% unique() 
+  
+  # Remove flowcells which are not ok to the quality characteristics
+  Data <- semi_join(x,IC.read,by="flowcell_id")
+  
+  return(list(IC.tag = Data,
+              IC.read = IC.read))
+}
+
+IC.Hiseq6.sample <- CreateICsample(x=Hiseq6.tag, 
+                                   y=Hiseq6.read,
+                                   quality_crit = list(err=1, 
+                                                       pf_clusters=1e8))
+# Extract the data from this in control data set.
+IC.Hiseq6 <- ExtractBotLvlTimeseries(c("mean_q","pct_q30","error_rate"),
+                                     machine="HiSeq 6", 
+                                     Data=group_by(IC.Hiseq6.sample$IC.read)) %>%
+  na.omit()
+
+rm(df.sample.results,All.df.reduced,HiSeq6.botlvl.series,Hiseq6.tag,Hiseq6.read,Missing)
+@
+
+<<TransformationIC>>=
+TransformDataFun <- function(x){
+  # Function which transforms data using a Box-Cox transformation. 
+  # 
+  # Args:
+  #     x: a vector containing numeric data.
+  #
+  # Returns: 
+  #     A list containing two elements. The first element of the list is the estimated transformation parameter. The second is the transformed data.
+  
+  # The estimation of the transformation parameter.
+  lambda <- forecast::BoxCox.lambda(x)
+  
+  return(list(Lambda=lambda,
+              data=forecast::BoxCox(x,lambda)))
+}
+##############################
+# Transforming a in control sample containing the following variables:
+# pct_q30, error_rate, mean_q
+
+# pct_q30 will be transformed using normal quantile function
+colnam <- colnames(IC.Hiseq6[,-c(1:3)])
+PCT <- grep("pct",colnam)
+
+# Prepare data frame.
+TransformedData <- IC.Hiseq6[,-c(1:3)]
+# Transform using Box-Cox
+TransformedData.tmp <- apply(TransformedData[,!1:ncol(TransformedData) %in% PCT], 2, TransformDataFun)
+
+Lambdas <- lapply(TransformedData.tmp,function(x) x$Lambda) %>% unlist()
+# Extract Box-Cox transformaed data.
+TransformedData.tmp <- lapply(TransformedData.tmp, function(x) x$data) %>% do.call("cbind",.)
+# replace non-transformed data with transformed.
+TransformedData[,!1:ncol(TransformedData) %in% PCT] <- TransformedData.tmp
+# Transform pct_q30 with quantile function
+TransformedData[,PCT] <- apply(TransformedData[,1:ncol(TransformedData) %in% PCT],2,function(x) qnorm(x))
+#save(Lambdas, TransformedData, file="../Data/ICdata.Rdata")
+@
+
+<<Tests>>=
+# Perform statistical tests on the transformed data. Is it normally distributed?
+# Place on the same scale -> divide by a constant.
+K <- 100
+OrgOrder <- colnames(TransformedData)
+# divide by a constant!
+TransformedData[,1:ncol(TransformedData) %in% grep("mean",OrgOrder)] <- TransformedData[,1:ncol(TransformedData) %in% grep("mean",OrgOrder)]/K
+
+t2 <- MVN::hzTest(TransformedData)
+t4 <- mvShapiroTest::mvShapiro.Test(as.matrix(TransformedData))
+#save(t2,t4,file = "../Data/LambdaAndXtable.Rdata")
+@
+
+
+
+
+
