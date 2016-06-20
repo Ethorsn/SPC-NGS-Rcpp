@@ -1,9 +1,9 @@
 
-ExtractTimeseries <- function(Instrument, Data){
+ExtractTimeseries <- function(Instr, Data){
   # Function which extracts the time series of a specific Instrument for 
   #
   # Args:
-  #    Instrument: A character which needs to be exactly one of the Instruments factor levels. 
+  #    Instr: A character which needs to be exactly one of the Instruments factor levels. 
   #    Data: A data frame from which to create a time series from. Needs to be on long format with the following column variables
   #          - lane_num
   #          - read_num
@@ -19,7 +19,7 @@ ExtractTimeseries <- function(Instrument, Data){
   
   for(Lane in 1:numb_Lanes) {
     for(Read in 1:numb_Reads) {
-      df <- filter(Data, lane_num==Lane, read_num==Read, Instrument==Instrument)  
+      df <- filter(Data, lane_num==Lane, read_num==Read, Instrument==Instr)  
       # Unite lane_num and read_num to a 
       df <- unite_(df,"lane_read", c("lane_num","read_num"))
       read.num.series <- c(read.num.series,list(df))
@@ -28,8 +28,8 @@ ExtractTimeseries <- function(Instrument, Data){
   
   return(read.num.series)
 }
-# All.df.reduced
-# First_test <- ExtractTimeseries("HiSeq 3", All.df.reduced)
+ #All.df.reduced
+ #First_test <- ExtractTimeseries("HiSeq 3", All.df.reduced)
 
 extractVars <- function(what_variables,list_containing_dataframes){
   # Function which extracts the variables of interest from a list where each element of the 
@@ -45,7 +45,7 @@ extractVars <- function(what_variables,list_containing_dataframes){
   
   lapply(list_containing_dataframes, function(y) y[,what_variables])
 }
-# Second_test <- extractVars(c("Date","flowcell_id","mean_q"),First_test)
+#Second_test <- extractVars(c("Date","flowcell_id","mean_q"),First_test)
 
 JoinTablesList <- function(list_containing_dataframes,what_to_join_by){
   # Function which joins the elements of a list where each element are data frames containing a variable what_to_join_by
@@ -93,35 +93,22 @@ ExtractBotLvlTimeseries <- function(variable, machine, Data){
   # join by date and flowcell_id
   by <- c("Date", "flowcell_id", "cycles")
   # what to extract from data
-  if (any(colnames(Data) %in% c("read_num")) ){
-    what <- c("Date","flowcell_id","lane_read","cycles", variable)
-  }else{
-    what <- c("Date","flowcell_id","lane_num","cycles", variable)
-  }
+  what <- c("Date","flowcell_id","lane_read","cycles", variable)
+  
   # extract all timeseries to a lsit
-  tmp.df <- ExtractTimeseries(machine, Data)
+  tmp.df <- ExtractTimeseries(Instr=machine, Data=Data)
   # Extract the timeseries that we are interested in.
   tmp.df <- extractVars(what,tmp.df)
   # fix name to correspond to which lane and read num
-  if (any(colnames(Data) %in% c("read_num")) ){
-    tmp.df <- lapply(tmp.df, function(x){
-          col.name <- colnames(x)
-          col <- colnames(x) %in% variable
-          colnames(x)[col] <- paste0(variable,"_",unique(x$lane_read))
-          x$lane_read <- NULL
-          return(x)
-        }
-    )
-  }else{
-    tmp.df <- lapply(tmp.df, function(x){
-          col.name <- colnames(x)
-          col <- colnames(x) %in% variable
-          colnames(x)[col] <- paste0(variable,"_",unique(x$lane_num))
-          x$lane_num <- NULL
-          return(x)
-        }
-    )
-  }
+  tmp.df <- lapply(tmp.df, 
+                   function(x){
+                     col.name <- colnames(x)
+                     col <- colnames(x) %in% variable
+                     colnames(x)[col] <- paste0(variable,"_",unique(x$lane_read))
+                     x$lane_read <- NULL
+                     return(x)
+                   }
+                  )
   
   tmp.df <- JoinTablesList(tmp.df,by) 
   

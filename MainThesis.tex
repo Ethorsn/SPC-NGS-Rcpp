@@ -129,7 +129,18 @@ This thesis will be outlined as follows. First, a brief introduction on next gen
 \chapter{Exploratory data analysis}
 
 
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
 
+
+{\ttfamily\noindent\color{warningcolor}{\#\# Warning: package 'ggplot2' was built under R version 3.2.4}}
+
+{\ttfamily\noindent\color{warningcolor}{\#\# Warning: replacing previous import by 'grid::arrow' when loading 'GGally'}}
+
+{\ttfamily\noindent\color{warningcolor}{\#\# Warning: replacing previous import by 'grid::unit' when loading 'GGally'}}
+
+{\ttfamily\noindent\color{warningcolor}{\#\# Warning: package 'ggExtra' was built under R version 3.2.5}}\end{kframe}
+\end{knitrout}
 
 
 In this section we will conduct a exploratory data analysis. We will first introduce the datasets which will be used in this thesis and then continue with exploring them seperately. We will focus our attention to the data of one of each model. 
@@ -152,19 +163,20 @@ The last row in Table \ref{CompCycl} shows the total number of runs performed on
   & \multicolumn{9}{c}{Machine} \\ \cmidrule(r){2-10} 
 Cycles & Hi3 & Hi4 & Hi5 & Hi6 & HiX1 & HiX2 & HiX3 & HiX4 & HiX5 \\ 
   \midrule
+0 & 1 & 2 &  & 3 &  & 3 &  & 1 & 1 \\ 
 49 & 7 &  &  &  &  &  &  &  &  \\ 
-  50 & 16 & 10 & 11 & 7 &  &  &  &  &  \\ 
-  60 &  &  &  & 3 &  &  &  &  &  \\ 
-  99 & 2 & 4 & 2 & 1 &  &  &  &  &  \\ 
-  100 & 73 & 49 & 15 & 6 &  &  &  &  &  \\ 
-  124 &  & 22 & 22 & 30 &  &  &  &  &  \\ 
-  125 &  & 53 & 46 & 50 &  &  &  &  &  \\ 
-  150 & 11 & 2 & 14 & 16 & 30 & 27 & 22 & 32 & 16 \\ 
-  200 &  &  &  & 1 &  &  &  &  &  \\ 
-  250 & 6 & 1 &  &  &  &  &  &  &  \\ 
-  \midrule
-  $\Sigma$ & 115 & 141 & 110 & 114 & 30 & 27 & 22 & 32 & 16 \\ 
-   \bottomrule
+50 & 16 & 10 & 11 & 7 &  &  &  &  &  \\ 
+60 &  &  &  & 3 &  &  &  &  &  \\ 
+99 & 2 & 4 & 2 & 1 &  &  &  &  &  \\ 
+100 & 73 & 49 & 15 & 6 &  &  &  &  &  \\ 
+124 & & 22 & 22 & 30 &  &  &  &  &  \\ 
+125 & & 53 & 46 & 50 &  &  &  &  &  \\ 
+150 & 11 & 2 & 14 & 16 & 30 & 27 & 22 & 32 & 16 \\ 
+200 & &  &  & 1 &  &  &  &  &  \\ 
+250 & 6 & 1 &  &  &  &  &  &  &  \\ 
+\midrule
+$\Sigma$ & 115 & 143 & 110 & 117 & 30 & 30 & 22 & 33 & 17 \\ 
+\bottomrule
 \end{tabular}
 \label{CompCycl}
 \end{table}
@@ -217,7 +229,7 @@ In Figure \ref{fig:ReadlvlER} we have a histograms of the error rate, raw cluste
 
 
 \end{knitrout}
-The Spearman correlation matrix is visualized in Figure \ref{fig:ReadlvlCor}. The number of variables in the Figure is equal to $112$. The correlation matrix is estimated from a sample size of $213$. In this figure the axis labels where omitted but a header for each group of variables is placed next to them. As an example, the top 16 variables in Figure \ref{fig:ReadlvlCor} corresponds to the error rate for each read and lane which is denoted by the label. We will refer to this as a section of variables. 
+The Spearman correlation matrix is visualized in Figure \ref{fig:ReadlvlCor}. The number of variables in the Figure is equal to $112$. The correlation matrix is estimated from a sample size of $79$. In this figure the axis labels where omitted but a header for each group of variables is placed next to them. As an example, the top 16 variables in Figure \ref{fig:ReadlvlCor} corresponds to the error rate for each read and lane which is denoted by the label. We will refer to this as a section of variables. 
 
 We can see that the density and cluster sections of variables correlate almost perfectly. This is especially true for measurements on the same read in a lane. The mean q and percent q30 sections seem to be correlated to each other while not having much correlation to the cluster and density variables. The error rate is negatively correlated with percent q30 and mean q measurements from the same read and lane, while not showing much correlation to other reads and lanes. The correlation matrix can almost be placed on a block diagonal form where three first sections of variables create one block and the last four create another. %Variables on the same read and lane seem to be correlated well while 
 %A deviating pattern is is also seen in this section of variables. Those mean q and percent q30 corresponding to lane 7 read 1 and 2, shows much less correlation to the variables inside and outside section but shows very strong correlation to eachother. Also, the percent tag error shows correlation between lanes with low lane number (\textit{reformulate?}) but lanes with high lane number show very little correlation to the others. 
@@ -417,7 +429,14 @@ $\bar{D}$ & 41.65 & 5.60 & 0.20 & -0.04 & -0.13 & -0.17 & -0.31 & -0.75 & -1.64 
 \section{A application on HiSeq quality control data.}
 
 
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
 
+
+{\ttfamily\noindent\color{warningcolor}{\#\# Warning: package 'Rcpp' was built under R version 3.2.5}}
+
+{\ttfamily\noindent\color{warningcolor}{\#\# Warning: package 'RcppArmadillo' was built under R version 3.2.5}}\end{kframe}
+\end{knitrout}
 
 
 In this section we will test the control charts which were constructed from transformed quality control HiSeq 6 on the three other HiSeq machines, namely HiSeq 3, 4 and 5. First, we transform the quality control data from HiSeq 3, 4 and 5 using the Box-Cox transformation with the estimated parameters from the HiSeq 6 data. For variables with limited support, we use the quantile normal function to transform the data. After the transformation we test the constructed control charts on the new data. Any alarm that is given will only be a indication that the in-control parameters for HiSeq 6 does not fit the other machines. 
@@ -438,13 +457,13 @@ In Figure \ref{fig:HiSeqPhase2Hotelling} we can see Hotellings $T^2$ statistic o
 \end{knitrout}
 The MCUSUM charts for the mean vector and covariance matrix are shown in Figure \ref{fig:HiSeq45MCUSUMfig} for the HiSeq 4 and 5 machines. We can see that the charts give a strong indication that the estimated in control mean vector and covariance matrix do not fit the transformed quality data of HiSeq 4 and 5. If we assume that the transformed quality control data for HiSeq 4 and 5 can represent a IC sample from their respective processes, we can calculate the non-centrality parameter, described in section \ref{croiserCUSUM}. Note that we are not removing any observations from the HiSeq 4 and 5 quality control data and that we are using the transformation parameter estimated from HiSeq 6 quality control data. Let $\hat{\boldsymbol{\mu}}_{i}$ be the maximum likelihood estimator of the mean vector based on the $i$-th HiSeq (transformed) quality control data. The non-centrality parameter for HiSeq 4 can be calculated to 
 $$
-(\hat{\boldsymbol{\mu}}_{0}-\hat{\boldsymbol{\mu}}_{4})\widehat{\Sigma}_0(\hat{\boldsymbol{\mu}}_{0}-\hat{\boldsymbol{\mu}}_{4})'=0.557.
+(\hat{\boldsymbol{\mu}}_{0}-\hat{\boldsymbol{\mu}}_{4})\widehat{\Sigma}_0(\hat{\boldsymbol{\mu}}_{0}-\hat{\boldsymbol{\mu}}_{4})'=0.205.
 $$
-The non-centrality parameter based on HiSeq 5 is calculated to $0.557$. The covariance matrices can be compared using the determinant of the covariance matrices. It represents the squared volume of the parallelotope in $\mathcal{R}^p$ where the eigenvectors are the principal edges (cf. \citet[page 385]{MultStatAnalysis}). The ratio of the determinants serve as a measure of how the squared volume of the parallelotope relates to eachother. Let $\widehat{\Sigma}_i$ be the maximum likelihood estimator based on transformed quality control data from the $i$-th HiSeq machine. Let
+The non-centrality parameter based on HiSeq 5 is calculated to $4.926$. The covariance matrices can be compared using the determinant of the covariance matrices. It represents the squared volume of the parallelotope in $\mathcal{R}^p$ where the eigenvectors are the principal edges (cf. \citet[page 385]{MultStatAnalysis}). The ratio of the determinants serve as a measure of how the squared volume of the parallelotope relates to eachother. Let $\widehat{\Sigma}_i$ be the maximum likelihood estimator based on transformed quality control data from the $i$-th HiSeq machine. Let
 $$
 R_{i} = \frac{|\widehat{\Sigma}_0|}{|\widehat{\Sigma}_i|}
 $$
-be the ratio between the in control covariance matrix and the estimated covariance matrix based on the $i$-th HiSeq transformed quality control data. The ratio $R_{i}$ for HiSeq 4 transformed quality control data is equal to $R_{4}=\ensuremath{1.6582958\times 10^{-10}}$ and for HiSeq 5 we have $R_{5}=\ensuremath{1.6582958\times 10^{-10}}$. In the transformed space, these covariance matrices are not equal in terms of their parallelotope volume. Note that this only gives a illustration to whether or not their volume is equal. It does not take the inherent structure of the covariance matrix into account. Also, as described in section \ref{Wishartderiv}, any control chart constructed from the transformed quantities would be sensitive to shifts in the mean. The very large values of the charting statistics, seen in the right column of Figure \ref{fig:HiSeq45MCUSUMfig} could be a result of differences in the covariance matrix \textit{and} the mean vector. Since the charts gave a indication of a change in this manner, the change-point detection model will not be used in this setting.
+be the ratio between the in control covariance matrix and the estimated covariance matrix based on the $i$-th HiSeq transformed quality control data. The ratio $R_{i}$ for HiSeq 4 transformed quality control data is equal to $R_{4}=\ensuremath{3.0064497\times 10^{12}}$ and for HiSeq 5 we have $R_{5}=\ensuremath{5.5434293\times 10^{8}}$. In the transformed space, these covariance matrices are not equal in terms of their parallelotope volume. Note that this only gives a illustration to whether or not their volume is equal. It does not take the inherent structure of the covariance matrix into account. Also, as described in section \ref{Wishartderiv}, any control chart constructed from the transformed quantities would be sensitive to shifts in the mean. The very large values of the charting statistics, seen in the right column of Figure \ref{fig:HiSeq45MCUSUMfig} could be a result of differences in the covariance matrix \textit{and} the mean vector. Since the charts gave a indication of a change in this manner, the change-point detection model will not be used in this setting.
 
 
 \begin{knitrout}
@@ -485,8 +504,8 @@ $$
 where Y will follow a normal distribution.
 
 Two statistical tests of the normal assumption are presented in Table \ref{TestTable}, performed on the transformed data. Henze-Zirkler's multivariate test of normality, presented in \citet{HenzeZirkler}, shows some evidence against the null that data is not normally distributed. The genaralized Shapiro-Wilk test of normality, presented in \citet{GenShapWilk}, shows no evidence at all.
-% latex table generated in R 3.2.3 by xtable 1.8-2 package
-% Fri Jun 17 15:22:38 2016
+% latex table generated in R 3.2.2 by xtable 1.7-4 package
+% Mon Jun 20 09:58:31 2016
 \begin{table}[ht]
 \centering
 \begin{tabular}{rlr}
@@ -508,8 +527,8 @@ We will also test the assumption that the estimated covariance matrix is a posit
 
 The result from the function is $TRUE$, the estimated covariance matrix is positive definite. 
 
-% latex table generated in R 3.2.3 by xtable 1.8-2 package
-% Fri Jun 17 15:22:38 2016
+% latex table generated in R 3.2.2 by xtable 1.7-4 package
+% Mon Jun 20 09:58:31 2016
 \begin{table}[ht]
 \centering
 \begin{tabular}{rr}
