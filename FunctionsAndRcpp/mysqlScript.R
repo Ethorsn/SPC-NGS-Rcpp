@@ -3,7 +3,8 @@ library(dplyr)
 library(lubridate)
 
 # Connect to LOCAL MySql database
-con <- dbConnect(RMySQL::MySQL(),dbname="ProjectMan", username="root", password="Mkonji123")
+PASSWORD <- "A password!"
+con <- dbConnect(RMySQL::MySQL(),dbname="ProjectMan", username="root", password=PASSWORD)
 
 # list tables.
 # dbListTables(con)
