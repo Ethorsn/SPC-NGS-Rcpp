@@ -147,8 +147,8 @@ extern "C" SEXP SimulateCPDs(SEXP NumbSims,SEXP N,SEXP tau, SEXP mu0, SEXP mu1, 
   mat ICdata = mat(TAU,n_vars);
   mat OCdata = mat(n,n_vars);
   mat Alldata = mat(TAU+n,n_vars);
-  int l;
-#pragma omp parallel for num_threads(Nthread) shared(ret_Vec) private(l,ICdata,OCdata,Alldata) firstprivate(TAU,n,Mu0,Mu1,Sigma0,Sigma1)
+  size_t l;
+//#pragma omp parallel for num_threads(Nthread) shared(ret_Vec) private(l,ICdata,OCdata,Alldata) firstprivate(TAU,n,Mu0,Mu1,Sigma0,Sigma1)
   for(l = 0; l < Nsims; ++l){
     // simulate data
     ICdata = mvrnormArma(TAU, Mu0, Sigma0);

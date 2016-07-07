@@ -127,47 +127,47 @@ rowvec SimulateARL0(SEXP n, SEXP h, SEXP k, SEXP mu0, SEXP Sigma0, SEXP No_threa
   rowvec S_old(Sigma.n_cols), Sims(Sigma.n_cols);
   // Define exceptions.
   class InvalidDim_exception: public std::exception {};
-                            class NegParams_exception: public std::exception {};
+  class NegParams_exception: public std::exception {};
                                                      
-                                                     try{
-                                                       if (Sigma.n_cols != Mu.size() || Sigma.n_rows != Mu.size())
-                                                       {
-                                                         // Sigma, Mu and does not have the same dimensions.
-                                                         throw InvalidDim_exception();
-                                                       }
-                                                       else if (K < 0 || H < 0)
-                                                       {
-                                                         // k or h is negative
-                                                         throw NegParams_exception();
-                                                       }
-                                                       else
-                                                       {
-                                                         Rcout << "Inits done! Starting simulations. \n" << endl;
-                                                       }
-                                                       
-                                                       /*
-                                                        The addition of #pragma from OpenMP fixes parallel stuff...
-                                                        So the following code is in parallel, using num_threads(Nthread) threads.
-                                                        */
+  try{
+    if (Sigma.n_cols != Mu.size() || Sigma.n_rows != Mu.size())
+    {
+      // Sigma, Mu and does not have the same dimensions.
+      throw InvalidDim_exception();
+    }
+    else if (K < 0 || H < 0)
+    {
+      // k or h is negative
+      throw NegParams_exception();
+    }
+    else
+    {
+      Rcout << "Inits done! Starting simulations. \n" << endl;
+    }
+    
+    /*
+     The addition of #pragma from OpenMP fixes parallel stuff...
+     So the following code is in parallel, using num_threads(Nthread) threads.
+     */
 #if _OPENMP
 #pragma omp parallel for num_threads(Nthread) shared(VecReturn) private(l, counter, Cstat, S_old, Sims) firstprivate(H, K, Mu, Sigma)
 #endif   
-                                                       for (l = 0; l < N;++l){
-                                                         // Inits for a run
-        counter = 1;
-        Cstat = 0;
-        S_old = zeros<rowvec>(Sigma.n_cols);
-        // simulating the expectation.
-        for (int k=0; k<10000; ++k){
-          Sims = mvrnormArma(Mu, Sigma);
-          // Use MCUSUM scheme, first update Cstat then S_old.
-          Cstat = CFun(Sims, S_old, Mu, Sigma, K);
-          S_old = SnewFun(Sims, S_old, Mu, Sigma, K);
-          if (Cstat > H){break;};
-          counter += 1;
-        };
-        VecReturn(l) = counter;  
+    for (l = 0; l < N;++l){
+      // Inits for a run
+      counter = 1;
+      Cstat = 0;
+      S_old = zeros<rowvec>(Sigma.n_cols);
+      // simulating the expectation.
+      for (int k=0; k<10000; ++k){
+        Sims = mvrnormArma(Mu, Sigma);
+        // Use MCUSUM scheme, first update Cstat then S_old.
+        Cstat = CFun(Sims, S_old, Mu, Sigma, K);
+        S_old = SnewFun(Sims, S_old, Mu, Sigma, K);
+        if (Cstat > H){break;};
+        counter += 1;
       };
+      VecReturn(l) = counter;  
+    };
   }
   catch(NegParams_exception e){
     // Negative values
