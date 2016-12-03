@@ -3,6 +3,7 @@
 #include <RcppArmadillo.h>
 #include <RcppParallel.h>
 #include <iostream>
+#include <math.h>       /* exp */
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -97,7 +98,6 @@ rowvec CPDestimation_cpp(mat data, rowvec mu0, mat Sigma0){
   return ret;
 }
 
-
 mat mvrnormArma(int n, rowvec mu, mat sigma) {
   /* Function which simulates n multivariate normal obs using the cholesky decomposition.
    * 
@@ -165,6 +165,8 @@ extern "C" SEXP SimulateCPDs(SEXP NumbSims,SEXP N,SEXP tau, SEXP mu0, SEXP mu1, 
   }
   return wrap(ret_Vec);
 }
+
+
 /***R
 #CPDestimation(matrix(c(1,2,3,1,2,3,1,2,3),byrow = FALSE, ncol=3),mu0=rep(0,3), Sigma0=diag(3)) # ok!
 #SimulateCPDs(NumbSims = 10, N=70, tau=20, mu0=rep(0,3), mu1 = rep(10,3), sigma0 = diag(3), sigma1 = diag(3), No_threads = 2)

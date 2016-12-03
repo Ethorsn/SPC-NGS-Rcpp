@@ -6,7 +6,7 @@ library(Rcpp)
 library(dplyr)
 library(RcppArmadillo)
 # Load function
-sourceCpp("../FunctionsAndRcpp/SimulateARL1.cpp") 
+sourceCpp("../FunctionsAndRcpp/RcppSimulateARL1.cpp") 
 # load in control data and control limits for the mean.
 load("../Data/ICdata.Rdata")
 load("../Data/meanH.Rdata")
@@ -28,7 +28,7 @@ Control.Limits.mean <- lapply(H_Listmean, function(x) x$Intervals %>%
 MYSEQ <- c(0.3,0.4,0.5)
 N<- 1e5
 ##################################################### 
-# Case 1 simulations
+# Scenario 2 simulations
 ChangeMeanFun<- function(mu0,x) { 
   mu0 + c(rep(c(-x,-x,x),2),rep(0,length(mu0)-6))
 }
@@ -37,11 +37,12 @@ changeVector.case1 <- seq(0.0001,0.05, length=50)
 
 ARL1.case1 <- list()
 ##### Simulate ARL1
-
 for (i in 1:(length(MYSEQ))){
   Return.df <- c()
   for (j in changeVector.case1){
-    tmp <- SimulateARL1mean(N,Control.Limits.mean[i], k=MYSEQ[i], mu0=mu0, mu1 = ChangeMeanFun(mu0, j), n0=0, Sigma0 = Sigma0, 7)  
+    h <- Control.Limits.mean[i]
+    k <- MYSEQ[i]
+    tmp <- SimulateARL1mean(n=N, h=h, k=k, mu0=mu0, mu1 = ChangeMeanFun(mu0, j), n0=0, Sigma0 = Sigma0, 7)  
     
     Return.df <- c(Return.df,mean(tmp))
   }
@@ -53,7 +54,7 @@ for (i in 1:(length(MYSEQ))){
 
 ED.case1 <- list()
 q <- 20
-##### Simulate ARL1
+##### Simulate ED
 for (i in 1:(length(MYSEQ))){
   Return.df <- c()
   for (j in changeVector.case1){
@@ -70,7 +71,7 @@ for (i in 1:(length(MYSEQ))){
 save(ARL1.case1,ED.case1,changeVector.case1, file="../Data/Case1Mean.Rdata")
 
 ##################################################### 
-# Case 2 simulations
+# Scenario 3 simulations
 ChangeMeanFun<- function(mu0,x) { 
   mu0 + c(rep(c(0,0,x),2),rep(0,length(mu0)-6))
 }
@@ -88,13 +89,14 @@ for (i in 1:(length(MYSEQ))){
     Return.df <- c(Return.df,mean(tmp))
   }
   Return.df <- as.data.frame(Return.df)
+  names(ARL1.case2)[i] <- MYSEQ[i]
   ARL1.case2 <- c(ARL1.case2,Return.df)
   print("New k!")
 }
 
 ED.case2 <- list()
 q <- 20
-##### Simulate ARL1
+##### Simulate ED
 for (i in 1:(length(MYSEQ))){
   Return.df <- c()
   for (j in changeVector.case2){

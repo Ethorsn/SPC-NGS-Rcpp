@@ -29,7 +29,7 @@ VizCor <- function(x, title, method){
       )),
     aes(Var1,Var2,fill=value)) +
     geom_raster() +
-    scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+    scale_fill_gradient2(low = "black", high = "white", mid = "grey", 
                          midpoint = 0, limit = c(-1,1), space = "Lab",
                          name="Correlation") +
     coord_fixed() +
